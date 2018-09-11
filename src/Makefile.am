@@ -301,15 +301,14 @@ libmodsecurity_la_CPPFLAGS = \
 	$(GEOIP_CFLAGS) \
 	$(GLOBAL_CPPFLAGS) \
 	$(MODSEC_NO_LOGS) \
-	$(MODSEC_MUTEX_ON_PM) \
 	$(YAJL_CFLAGS) \
 	$(LMDB_CFLAGS) \
 	$(PCRE_CFLAGS) \
+	$(HS_CFLAGS) \
 	$(SSDEEP_CFLAGS) \
 	$(MAXMIND_CFLAGS) \
 	$(LUA_CFLAGS) \
 	$(LIBXML2_CFLAGS)
-
 
 libmodsecurity_la_LDFLAGS = \
 	$(CURL_LDFLAGS) \
@@ -320,6 +319,7 @@ libmodsecurity_la_LDFLAGS = \
 	$(LMDB_LDFLAGS) \
 	$(LUA_LDFLAGS) \
 	$(PCRE_LDFLAGS) \
+	$(HS_LDFLAGS) \
 	$(SSDEEP_LDFLAGS) \
 	$(MAXMIND_LDFLAGS) \
 	$(YAJL_LDFLAGS) \
@@ -336,6 +336,7 @@ libmodsecurity_la_LIBADD = \
 	../others/libinjection.la \
 	../others/libmbedtls.la \
 	$(PCRE_LDADD) \
+	$(HS_LDADD) \
 	$(MAXMIND_LDADD) \
 	$(SSDEEP_LDADD) \
 	$(YAJL_LDADD)

@@ -15,6 +15,7 @@ modsec_rules_check_LDADD = \
 	$(LMDB_LDADD) \
 	$(LUA_LDADD) \
 	$(PCRE_LDADD) \
+	$(HS_LDADD) \
 	$(SSDEEP_LDADD) \
 	$(YAJL_LDADD)
 
@@ -32,6 +33,7 @@ modsec_rules_check_CPPFLAGS = \
 	-I$(top_builddir)/headers \
 	$(GLOBAL_CPPFLAGS) \
 	$(PCRE_CFLAGS) \
+	$(HS_CFLAGS) \
 	$(LMDB_CFLAGS) \
 	$(MAXMIND_CFLAGS) \
 	$(LIBXML2_CFLAGS)

@@ -27,6 +27,7 @@ namespace operators {
 
 
 bool PmFromFile::init(const std::string &config, std::string *error) {
+    std::vector<std::string> vec;
     std::istream *iss;
 
     if (m_param.compare(0, 8, "https://") == 0) {
@@ -48,14 +49,12 @@ bool PmFromFile::init(const std::string &config, std::string *error) {
             return false;
         }
     }
-
+    
     for (std::string line; std::getline(*iss, line); ) {
-        acmp_add_pattern(m_p, line.c_str(), NULL, NULL, line.length());
+        vec.push_back(line);
     }
 
-    while (m_p->is_failtree_done == 0) {
-        acmp_prepare(m_p);
-    }
+    rx = new Regex(vec);
 
     delete iss;
     return true;

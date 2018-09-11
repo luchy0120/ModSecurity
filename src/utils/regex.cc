@@ -15,7 +15,6 @@
 
 #include "src/utils/regex.h"
 
-#include <pcre.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -28,104 +27,173 @@
 
 #include "src/utils/geo_lookup.h"
 
-#if PCRE_HAVE_JIT
-#define pcre_study_opt PCRE_STUDY_JIT_COMPILE
-#else
-#define pcre_study_opt 0
-#endif
+#include <ch.h>
 
 namespace modsecurity {
 namespace Utils {
 
-
-Regex::Regex(const std::string& pattern_)
-    : pattern(pattern_),
-    m_ovector {0} {
-    const char *errptr = NULL;
-    int erroffset;
-
-    if (pattern.empty() == true) {
-        pattern.assign(".*");
+Regex::Regex(std::vector<std::string>& patterns) {
+    std::vector<const char*> pats;
+    std::vector<unsigned> ids;
+  
+    unsigned id = 0;
+    for (auto& p : patterns) {
+        pats.push_back(p.c_str());
+        ids.push_back(id++);
     }
 
-    m_pc = pcre_compile(pattern.c_str(), PCRE_DOTALL|PCRE_MULTILINE,
-        &errptr, &erroffset, NULL);
-
-    m_pce = pcre_study(m_pc, pcre_study_opt, &errptr);
+    ch_compile_error_t *compile_err = NULL;
+    ch_compile_multi(&pats[0], NULL, &ids[0], patterns.size(), CH_MODE_NOGROUPS, NULL, &database, &compile_err);
 }
 
-
+Regex::Regex(const std::string& pattern) {
+    std::string pat(pattern);
+    ch_compile_error_t *compile_err = NULL;
+      
+    if (pat.empty()) {
+        pat.assign(".*");
+    }
+       
+    ch_compile(pat.c_str(), CH_FLAG_DOTALL|CH_FLAG_MULTILINE, CH_MODE_GROUPS, NULL, &database, &compile_err);
+}
+	
 Regex::~Regex() {
-    if (m_pc != NULL) {
-        pcre_free(m_pc);
-        m_pc = NULL;
-    }
-    if (m_pce != NULL) {
-#if PCRE_HAVE_JIT
-        pcre_free_study(m_pce);
-#else
-        pcre_free(m_pce);
-#endif
-        m_pce = NULL;
+    if (database != NULL) {
+        ch_free_database(database);
+        database = NULL;
     }
 }
 
+
+struct MatchesContext{
+    const std::string *s;
+    std::list<SMatch> *retList;
+};
+
+static int record_matches(unsigned int id, unsigned long long from,
+		          unsigned long long to, unsigned int flags, unsigned int size, const ch_capture_t *captured, void *ctx) {
+    struct MatchesContext *hyctx = (struct MatchesContext *)ctx;
+    for (unsigned int i = 0; i < size; ++i) {
+         if (captured[i].flags == CH_CAPTURE_FLAG_ACTIVE) {
+             SMatch match;
+             size_t start = from;
+             size_t end = to;
+             size_t len = end - start;
+             match.match = std::string(*hyctx->s, start, len);
+             match.m_offset = start;
+             match.m_length = len;
+             hyctx->retList->push_front(match);
+	     if (len == 0) {
+		 return CH_CALLBACK_TERMINATE;
+	     } 
+	 }
+    }
+
+    return CH_CALLBACK_CONTINUE;
+}
 
 std::list<SMatch> Regex::searchAll(const std::string& s) {
-    const char *subject = s.c_str();
-    const std::string tmpString = std::string(s.c_str(), s.size());
-    int ovector[OVECCOUNT];
-    int rc, i, offset = 0;
     std::list<SMatch> retList;
+    ch_scratch_t *scratch = NULL;
+    if (ch_alloc_scratch(database, &scratch) != CH_SUCCESS) {
+        return retList;
+    }
+    struct MatchesContext ctx = {
+        .s = &s,
+	.retList = &retList
+    };
 
-    do {
-        rc = pcre_exec(m_pc, m_pce, subject,
-            s.size(), offset, 0, ovector, OVECCOUNT);
-
-        for (i = 0; i < rc; i++) {
-            SMatch match;
-            size_t start = ovector[2*i];
-            size_t end = ovector[2*i+1];
-            size_t len = end - start;
-            if (end > s.size()) {
-                rc = 0;
-                break;
-            }
-            match.match = std::string(tmpString, start, len);
-            match.m_offset = start;
-            match.m_length = len;
-            offset = start + len;
-            retList.push_front(match);
-
-            if (len == 0) {
-                rc = 0;
-                break;
-            }
-        }
-    } while (rc > 0);
-
+    ch_scan(database, s.c_str(), s.size(), 0, scratch, record_matches, NULL, &ctx);
+    ch_free_scratch(scratch);
     return retList;
+}
+
+struct MatchContext {
+    SMatch *match;
+    const std::string *s;
+    int ret;
+};
+
+
+static int record_a_match(unsigned int id, unsigned long long from,
+		          unsigned long long to, unsigned int flags, unsigned int size, const ch_capture_t *captured, void *ctx) {
+    struct MatchContext *hyctx = (struct MatchContext *)ctx;
+    hyctx->match->match = std::string(*hyctx->s, (size_t)from, (size_t)to-from);
+    hyctx->match->size_ = 1;
+    hyctx->ret = 1;
+    return CH_CALLBACK_TERMINATE;
 }
 
 int regex_search(const std::string& s, SMatch *match,
     const Regex& regex) {
-    int ovector[OVECCOUNT];
-    int ret = pcre_exec(regex.m_pc, regex.m_pce, s.c_str(),
-        s.size(), 0, 0, ovector, OVECCOUNT) > 0;
-
-    if (ret > 0) {
-        match->match = std::string(s, ovector[ret-1],
-            ovector[ret] - ovector[ret-1]);
-        match->size_ = ret;
+    ch_scratch_t *scratch = NULL;
+    if (ch_alloc_scratch(regex.database, &scratch) != CH_SUCCESS) {
+        return 0;
     }
 
-    return ret;
+    struct MatchContext ctx = {
+        .match = match,
+        .s = &s,
+        .ret = 0 
+    };
+
+    ch_scan(regex.database, s.c_str(), s.size(), 0, scratch, record_a_match, NULL, &ctx);
+    ch_free_scratch(scratch);
+    return ctx.ret;
 }
 
+
+struct SimpleMatchContext {
+    const std::string *s;
+    std::string match;
+    int to;
+};
+
+static int record_simple_match(unsigned int id, unsigned long long from,
+                               unsigned long long to, unsigned int flags, unsigned int size, const ch_capture_t *captured, void *ctx) {
+    struct SimpleMatchContext *hyctx = (struct SimpleMatchContext *)ctx;
+    hyctx->to = (int)to;
+    hyctx->match.assign(std::string(*hyctx->s, (size_t)from, (size_t)to-from));
+    return CH_CALLBACK_TERMINATE;
+}
+
+int regex_search(const std::string &s, std::string &match,
+    const Regex& regex) {
+    ch_scratch_t *scratch = NULL;
+    if (ch_alloc_scratch(regex.database, &scratch) != CH_SUCCESS) {
+        return 0;
+    }
+
+    struct SimpleMatchContext ctx = {
+        .s = &s,
+        .match = "",
+	.to = 0 
+    };
+
+    ch_scan(regex.database, s.c_str(), s.size(), 0, scratch, record_simple_match, NULL, &ctx);
+    match = ctx.match;
+    ch_free_scratch(scratch);
+    return ctx.to;
+}
+
+static int found_match(unsigned int id, unsigned long long from,
+		       unsigned long long to, unsigned int flags, unsigned int size, const ch_capture_t *captured, void *ctx) {
+    int *ret = (int *)ctx;
+    *ret = 1;
+    return CH_CALLBACK_TERMINATE;
+}
+
+
 int regex_search(const std::string& s, const Regex& regex) {
-    int ovector[OVECCOUNT];
-    return pcre_exec(regex.m_pc, regex.m_pce, s.c_str(),
-        s.size(), 0, 0, ovector, OVECCOUNT) > 0;
+    ch_scratch_t *scratch = NULL;
+    if (ch_alloc_scratch(regex.database, &scratch) != CH_SUCCESS) {
+        return 0;
+    }
+    int ret = 0;
+    ch_scan(regex.database, s.c_str(), s.size(), 0, scratch, found_match, NULL, &ret);
+    ch_free_scratch(scratch);
+    return ret;
+
 }
 
 }  // namespace Utils

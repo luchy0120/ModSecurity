@@ -15,6 +15,7 @@ simple_request_LDADD = \
 	$(MAXMIND_LDADD) \
 	$(LUA_LDADD) \
 	$(PCRE_LDADD) \
+	$(HS_LDADD) \
 	$(SSDEEP_LDADD) \
 	$(YAJL_LDADD)
 
@@ -43,6 +44,7 @@ simple_request_CPPFLAGS = \
 	$(LMDB_CFLAGS) \
 	$(LUA_CFLAGS) \
 	$(PCRE_CFLAGS) \
+	$(HS_CFLAGS) \
 	$(LIBXML2_CFLAGS)
 
 

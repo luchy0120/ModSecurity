@@ -13,13 +13,11 @@
  *
  */
 
-#include <pcre.h>
-
-#include <iostream>
+#include <ch.h>
 #include <fstream>
 #include <string>
 #include <list>
-
+#include <vector>
 #ifndef SRC_UTILS_REGEX_H_
 #define SRC_UTILS_REGEX_H_
 
@@ -27,7 +25,6 @@
 namespace modsecurity {
 namespace Utils {
 
-#define OVECCOUNT 30
 
 class SMatch {
  public:
@@ -48,11 +45,9 @@ class SMatch {
 class Regex {
  public:
     explicit Regex(const std::string& pattern_);
+    explicit Regex(std::vector<std::string>& patterns);
     ~Regex();
-    std::string pattern;
-    pcre *m_pc = NULL;
-    pcre_extra *m_pce = NULL;
-    int m_ovector[OVECCOUNT];
+    ch_database_t *database = NULL;
 
     std::list<SMatch> searchAll(const std::string& s);
 };
@@ -63,7 +58,8 @@ int regex_search(const std::string& s, SMatch *m,
 
 int regex_search(const std::string& s, const Regex& r);
 
-
+int regex_search(const std::string& s, std::string& match,
+    const Regex& r);
 
 }  // namespace Utils
 }  // namespace modsecurity

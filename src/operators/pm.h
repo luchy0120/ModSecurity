@@ -22,10 +22,13 @@
 #include <utility>
 
 #include "src/operators/operator.h"
-#include "src/utils/acmp.h"
+#include "src/utils/regex.h"
 
 
 namespace modsecurity {
+
+using Utils::Regex;
+
 namespace operators {
 
 
@@ -34,30 +37,19 @@ class Pm : public Operator {
     /** @ingroup ModSecurity_Operator */
     explicit Pm(std::unique_ptr<RunTimeString> param)
         : Operator("Pm", std::move(param)) {
-        m_p = acmp_create(0);
     }
     explicit Pm(std::string n, std::unique_ptr<RunTimeString> param)
         : Operator(n, std::move(param)) {
-        m_p = acmp_create(0);
     }
     ~Pm();
     bool evaluate(Transaction *transaction, Rule *rule,
         const std::string &str,
         std::shared_ptr<RuleMessage> ruleMessage) override;
 
-
     bool init(const std::string &file, std::string *error) override;
-    void postOrderTraversal(acmp_btree_node_t *node);
-    void cleanup(acmp_node_t *n);
 
  protected:
-    ACMP *m_p;
-
-#ifdef MODSEC_MUTEX_ON_PM
-
- private:
-    pthread_mutex_t m_lock;
-#endif
+    Regex *rx;
 };
 
 
